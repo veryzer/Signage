@@ -1,6 +1,7 @@
-// receiver app.js/**
- * Chromecast Receiver Application
-*/
+/** 
+ * receiver app.js
+ * Chromecast Receiver Application 
+ */
 document.addEventListener("DOMContentLoaded", () => {
  const context = cast.framework.CastReceiverContext.getInstance();
  const db = window.getDatabase();
