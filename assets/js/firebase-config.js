@@ -3,13 +3,13 @@
  * Replace placeholders with your project values from Firebase Console -> Project Settings
  */
 const FirebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_PROJECT_ID.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID",
-  databaseURL: "https://YOUR_PROJECT_ID-default-rtdb.firebaseio.com"
+ apiKey: "AIzaSyDW1rXbbXocBKE8u40lHjcLnH_JXLMFyTM",
+  authDomain: "tlvp-signage.firebaseapp.com",
+  projectId: "tlvp-signage",
+  storageBucket: "tlvp-signage.firebasestorage.app",
+  messagingSenderId: "843561145964",
+  appId: "1:843561145964:web:e73a0f9c6c576a56f6aa49",
+  measurementId: "G-5WLCRWGKNQ"
 };
 
 let _firebaseInitialized = false;
