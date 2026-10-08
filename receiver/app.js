@@ -3,7 +3,12 @@
  * Chromecast Receiver Application 
  */
 document.addEventListener("DOMContentLoaded", () => {
- const context = cast.framework.CastReceiverContext.getInstance();
+ let context = null;
+try {
+    context = cast.framework.CastReceiverContext.getInstance();
+} catch (e) {
+    console.log("Running outside of Cast environment");
+}
  const db = window.getDatabase();
 
  // Get or create persistent device ID
@@ -48,7 +53,9 @@ document.addEventListener("DOMContentLoaded", () => {
    deviceRef.child("lastSeen").set(Date.now());
  }, 30000);
 
- context.start();
+if (context) {
+    context.start();
+}
 });
 
 function loadPlaylist(playlistId) {
