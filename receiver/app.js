@@ -2,20 +2,104 @@
  * receiver app.js
  * Chromecast Receiver Application 
  */
-document.addEventListener("DOMContentLoaded", () => {
-  let context = null;
+
+// Fallback Firebase Config in case firebase-config.js fails to load
+const DEFAULT_FIREBASE_CONFIG = {
+  apiKey: "AIzaSyDW1rXbbXocBKE8u40lHjcLnH_JXLMFyTM",
+  authDomain: "tlvp-signage.firebaseapp.com",
+  databaseURL: "https://tlvp-signage-default-rtdb.firebaseio.com",
+  projectId: "tlvp-signage",
+  storageBucket: "tlvp-signage.firebasestorage.app",
+  messagingSenderId: "843561145964",
+  appId: "1:843561145964:web:e73a0f9c6c576a56f6aa49",
+  measurementId: "G-5WLCRWGKNQ"
+};
+
+function getSafeDeviceId() {
   try {
-    if (window.cast && cast.framework && cast.framework.CastReceiverContext) {
-      context = cast.framework.CastReceiverContext.getInstance();
+    let id = localStorage.getItem("signage_device_id");
+    if (!id) {
+      id = "dev_" + Math.random().toString(36).substring(2, 9);
+      localStorage.setItem("signage_device_id", id);
     }
+    return id;
   } catch (e) {
-    console.log("Running outside of Cast environment", e);
+    if (!window._signage_device_id) {
+      window._signage_device_id = "dev_" + Math.random().toString(36).substring(2, 9);
+    }
+    return window._signage_device_id;
+  }
+}
+
+function getSafeDatabase() {
+  if (typeof window.getDatabase === "function") {
+    try {
+      return window.getDatabase();
+    } catch (e) {
+      console.warn("window.getDatabase() error:", e);
+    }
+  }
+  if (typeof firebase !== "undefined" && firebase.database) {
+    try {
+      if (!firebase.apps || !firebase.apps.length) {
+        firebase.initializeApp(window.firebaseConfig || DEFAULT_FIREBASE_CONFIG);
+      }
+      return firebase.database();
+    } catch (e) {
+      console.error("Direct firebase.initializeApp error:", e);
+    }
+  }
+  return null;
+}
+
+function initReceiverApp() {
+  // 1. Immediately show a 4-character pairing code so the screen is never stuck on '----'
+  let activePairingCode = null;
+  const pairingCodeEl = document.getElementById("pairingCode");
+  const pairingScreenEl = document.getElementById("pairing-screen");
+  const stageEl = document.getElementById("stage");
+  const statusBadge = document.getElementById("statusBadge");
+
+  try {
+    activePairingCode = sessionStorage.getItem("signage_pairing_code");
+  } catch (e) {}
+
+  if (!activePairingCode) {
+    activePairingCode = Math.random().toString(36).substring(2, 6).toUpperCase();
+    try {
+      sessionStorage.setItem("signage_pairing_code", activePairingCode);
+    } catch (e) {}
   }
 
-  const db = window.getDatabase();
+  if (pairingCodeEl) {
+    pairingCodeEl.innerText = activePairingCode;
+  }
 
-  // Status Badge handling (Online / Offline based on Firebase connection)
-  const statusBadge = document.getElementById("statusBadge");
+  // 2. Safely initialize Google Cast Web Receiver Context
+  try {
+    if (window.cast && cast.framework && cast.framework.CastReceiverContext) {
+      const context = cast.framework.CastReceiverContext.getInstance();
+      const options = new cast.framework.CastReceiverOptions();
+      options.disableIdleTimeout = true;
+      options.maxInactivity = 86400; // 24 hours
+      context.start(options);
+    }
+  } catch (e) {
+    console.log("Cast Receiver Context note:", e);
+  }
+
+  // 3. Obtain Firebase Database
+  const db = getSafeDatabase();
+  if (!db) {
+    if (statusBadge) {
+      statusBadge.textContent = "Offline (SDK error)";
+      statusBadge.style.color = "#f87171";
+    }
+    console.error("Firebase Database could not be initialized.");
+    return;
+  }
+
+  // 4. Update status badge dynamically (Online / Offline)
   const connectedRef = db.ref(".info/connected");
   connectedRef.on("value", (snap) => {
     const isConnected = snap.val() === true;
@@ -27,67 +111,46 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // Get or create persistent device ID
-  let deviceId = localStorage.getItem("signage_device_id");
-  if (!deviceId) {
-    deviceId = "dev_" + Math.random().toString(36).substring(2, 9);
-    localStorage.setItem("signage_device_id", deviceId);
-  }
-
+  const deviceId = getSafeDeviceId();
   const deviceRef = db.ref(`devices/${deviceId}`);
   let currentPlaylistId = null;
   let currentPlaylistRef = null;
-  let activePairingCode = null;
 
-  // Manage pairing screen & code
+  function registerPairingCodeInFirebase() {
+    if (!activePairingCode) return;
+
+    // Publish active pairing code to Firebase
+    db.ref(`unpaired_devices/${activePairingCode}`).set({
+      deviceId: deviceId,
+      created: Date.now()
+    }).catch((err) => {
+      console.warn("Could not write unpaired code:", err);
+    });
+  }
+
   function showPairingScreen() {
     stopSlideshow();
-    document.getElementById("stage").classList.add("hidden");
-    document.getElementById("pairing-screen").classList.remove("hidden");
+    if (stageEl) stageEl.classList.add("hidden");
+    if (pairingScreenEl) pairingScreenEl.classList.remove("hidden");
+    if (pairingCodeEl) pairingCodeEl.innerText = activePairingCode;
 
-    if (!activePairingCode) {
-      activePairingCode = Math.random().toString(36).substring(2, 6).toUpperCase();
-
-      // Clean up any stale unpaired codes for this deviceId first
-      db.ref("unpaired_devices").orderByChild("deviceId").equalTo(deviceId).once("value", (snap) => {
-        if (snap.exists()) {
-          snap.forEach((child) => {
-            child.ref.remove();
-          });
-        }
-        // Save current active pairing code in Firebase
-        db.ref(`unpaired_devices/${activePairingCode}`).set({
-          deviceId: deviceId,
-          created: Date.now()
-        });
-      });
-
-      document.getElementById("pairingCode").innerText = activePairingCode;
-    }
+    registerPairingCodeInFirebase();
   }
 
   function hidePairingScreen() {
     if (activePairingCode) {
-      db.ref(`unpaired_devices/${activePairingCode}`).remove();
-      activePairingCode = null;
+      db.ref(`unpaired_devices/${activePairingCode}`).remove().catch(() => {});
     }
-    // Clean up any other orphaned codes for this device
-    db.ref("unpaired_devices").orderByChild("deviceId").equalTo(deviceId).once("value", (snap) => {
-      if (snap.exists()) {
-        snap.forEach((child) => {
-          child.ref.remove();
-        });
-      }
-    });
-
-    document.getElementById("pairing-screen").classList.add("hidden");
-    document.getElementById("stage").classList.remove("hidden");
+    if (pairingScreenEl) pairingScreenEl.classList.add("hidden");
+    if (stageEl) stageEl.classList.remove("hidden");
   }
 
-  // Listen to device assignments in Firebase
+  // Initial pairing code registration
+  registerPairingCodeInFirebase();
+
+  // 5. Listen to device assignments in Firebase
   deviceRef.on("value", (snapshot) => {
     const data = snapshot.val();
-    // Device is considered paired if explicit paired flag is true or a playlist is assigned
     const isPaired = Boolean(data && (data.paired === true || (data.paired !== false && data.currentPlaylistId)));
 
     if (!isPaired) {
@@ -101,26 +164,26 @@ document.addEventListener("DOMContentLoaded", () => {
           listenToPlaylist(currentPlaylistId);
         }
       } else {
-        // Paired, but no playlist assigned yet
         currentPlaylistId = null;
         if (currentPlaylistRef) {
           currentPlaylistRef.off();
           currentPlaylistRef = null;
         }
         stopSlideshow();
-        const stage = document.getElementById("stage");
-        stage.innerHTML = `
-          <div style="color: #888; text-align: center; font-family: inherit;">
-            <h2 style="font-size: 2rem; margin-bottom: 0.5rem; color: #fff;">Display Paired</h2>
-            <p style="font-size: 1.1rem; color: #aaa;">Awaiting playlist assignment from dashboard...</p>
-          </div>
-        `;
-        stage.style.opacity = 1;
+        if (stageEl) {
+          stageEl.innerHTML = `
+            <div style="color: #888; text-align: center; font-family: inherit;">
+              <h2 style="font-size: 2rem; margin-bottom: 0.5rem; color: #fff;">Display Paired</h2>
+              <p style="font-size: 1.1rem; color: #aaa;">Awaiting playlist assignment from dashboard...</p>
+            </div>
+          `;
+          stageEl.style.opacity = 1;
+        }
       }
     }
   });
 
-  // Listen to active playlist changes
+  // 6. Listen to active playlist changes
   function listenToPlaylist(playlistId) {
     if (currentPlaylistRef) {
       currentPlaylistRef.off();
@@ -133,18 +196,19 @@ document.addEventListener("DOMContentLoaded", () => {
         runSlideshow(slides);
       } else {
         stopSlideshow();
-        const stage = document.getElementById("stage");
-        stage.innerHTML = `
-          <div style="color: #888; text-align: center;">
-            <p style="font-size: 1.2rem; color: #aaa;">Playlist is empty</p>
-          </div>
-        `;
-        stage.style.opacity = 1;
+        if (stageEl) {
+          stageEl.innerHTML = `
+            <div style="color: #888; text-align: center;">
+              <p style="font-size: 1.2rem; color: #aaa;">Playlist is empty</p>
+            </div>
+          `;
+          stageEl.style.opacity = 1;
+        }
       }
     });
   }
 
-  // Flash / Emergency message listener
+  // 7. Flash message listener
   deviceRef.child("flashMessage").on("value", (snapshot) => {
     const msg = snapshot.val();
     const flashEl = document.getElementById("flashMessage");
@@ -162,24 +226,27 @@ document.addEventListener("DOMContentLoaded", () => {
     flashEl.innerText = "";
   });
 
-  // Heartbeat & Presence
+  // 8. Heartbeat & Presence
   function sendHeartbeat() {
-    deviceRef.child("lastSeen").set(Date.now());
-    deviceRef.child("online").set(true);
+    deviceRef.child("lastSeen").set(Date.now()).catch(() => {});
+    deviceRef.child("online").set(true).catch(() => {});
   }
 
-  // Send initial presence & setup onDisconnect
   sendHeartbeat();
-  deviceRef.child("online").onDisconnect().set(false);
-  deviceRef.child("lastSeen").onDisconnect().set(Date.now());
+  try {
+    deviceRef.child("online").onDisconnect().set(false);
+    deviceRef.child("lastSeen").onDisconnect().set(Date.now());
+  } catch (e) {}
 
-  // Heartbeat every 30 seconds
   setInterval(sendHeartbeat, 30000);
+}
 
-  if (context) {
-    context.start();
-  }
-});
+// Ensure execution regardless of script load timing
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", initReceiverApp);
+} else {
+  initReceiverApp();
+}
 
 let slideshowTimer = null;
 let fadeTimer = null;
@@ -200,6 +267,7 @@ function runSlideshow(slides) {
 
   const slideList = (Array.isArray(slides) ? slides : Object.values(slides || {})).filter(Boolean);
   const stage = document.getElementById("stage");
+  if (!stage) return;
 
   if (slideList.length === 0) {
     stage.innerHTML = "";
