@@ -17,25 +17,10 @@ if (!firebase.apps.length) {
   firebase.initializeApp(firebaseConfig);
 }
 
-// Export database and auth helpers if needed
+// Export database and auth helpers
 const db = firebase.database();
 const auth = firebase.auth();
 
-let _firebaseInitialized = false;
-
-function initFirebase() {
-  if (_firebaseInitialized) return;
-  if (typeof firebase === "undefined") {
-    console.error("Firebase SDK script failed to load.");
-    return;
-  }
-  firebase.initializeApp(FirebaseConfig);
-  _firebaseInitialized = true;
-}
-
-window.FirebaseConfig = FirebaseConfig;
-window.initFirebase = initFirebase;
-window.getDatabase = function () {
-  initFirebase();
-  return firebase.database();
-};
+window.firebaseConfig = firebaseConfig;
+window.db = db;
+window.auth = auth;
