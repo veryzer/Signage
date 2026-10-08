@@ -20,6 +20,9 @@
       cursor: none;
       font-family: Arial, Helvetica, sans-serif;
     }
+    .hidden {
+      display: none !important;
+    }
     #stage {
       position: fixed;
       top: 0;
@@ -110,7 +113,7 @@
   </style>
 </head>
 <body>
-  <div id="stage"></div>
+  <div id="stage" class="hidden"></div>
   <div id="pairing-screen">
     <h1>Display Not Paired</h1>
     <div id="pairingCode">----</div>

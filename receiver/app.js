@@ -28,9 +28,9 @@ try {
      deviceId: deviceId,
      created: Date.now()
    });
-   document.getElementById("pairing-code").innerText = code;
-   document.getElementById("pairing-screen").classList.remove("hidden");
-   document.getElementById("signage-screen").classList.add("hidden");
+document.getElementById("pairingCode").innerText = code;
+    document.getElementById("pairing-screen").classList.remove("hidden");
+    document.getElementById("stage").classList.add("hidden");
  }
 
  // Listen to device assignments in Firebase
@@ -39,8 +39,8 @@ try {
    if (!data) {
      generatePairingCode();
    } else {
-     document.getElementById("pairing-screen").classList.add("hidden");
-     document.getElementById("signage-screen").classList.remove("hidden");
+document.getElementById("pairing-screen").classList.add("hidden");
+      document.getElementById("stage").classList.remove("hidden");
      if (data.currentPlaylistId !== currentPlaylistId) {
        currentPlaylistId = data.currentPlaylistId;
        loadPlaylist(currentPlaylistId);
@@ -70,20 +70,34 @@ function loadPlaylist(playlistId) {
 }
 
 function runSlideshow(slides) {
- let index = 0;
- function showNext() {
-   if (!slides || slides.length === 0) return;
-   const slide = slides[index];
-   const container = document.getElementById("slide-container");
-   
-   if (slide.type === "image") {
-     container.innerHTML = `<img src="${slide.url}" class="w-full h-full object-cover">`;
-   } else if (slide.type === "html") {
-     container.innerHTML = `<div class="p-8 text-white">${slide.content}</div>`;
-   }
+    if (!slides || slides.length === 0) {
+      document.getElementById("stage").innerHTML = "";
+      return;
+    }
+    let index = 0;
+    const stage = document.getElementById("stage");
+    stage.style.opacity = 1;
 
-   index = (index + 1) % slides.length;
-   setTimeout(showNext, (slide.durationSec || 10) * 1000);
- }
- showNext();
-}
+    function showNext() {
+      const slide = slides[index];
+      stage.style.opacity = 0;
+      setTimeout(() => {
+        if (slide.type === "image") {
+          stage.innerHTML = `<img src="${slide.url}" style="width:100%;height:100%;object-fit:contain;">`;
+        } else if (slide.type === "html") {
+          stage.innerHTML = `<div class="p-8 text-white w-full h-full flex items-center justify-center">${slide.content || ""}</div>`;
+        } else if (slide.type === "iframe") {
+          stage.innerHTML = `<iframe src="${slide.url}" style="width:100%;height:100%;border:0;"></iframe>`;
+        } else if (slide.type === "video") {
+          stage.innerHTML = `<video src="${slide.url}" autoplay muted loop playsinline style="width:100%;height:100%;object-fit:contain;"></video>`;
+        } else {
+          stage.innerHTML = "";
+        }
+        stage.style.opacity = 1;
+      }, 300);
+
+      index = (index + 1) % slides.length;
+      setTimeout(showNext, (slide.durationSec || 10) * 1000);
+    }
+    showNext();
+  }
