@@ -12,13 +12,10 @@ const firebaseConfig = {
   measurementId: "G-5WLCRWGKNQ"
 };
 
-// Initialize Firebase (Compat SDK style)
-if (!firebase.apps.length) {
-  firebase.initializeApp(firebaseConfig);
-}
+// Initialize Firebase (using your existing config keys)
+firebase.initializeApp(firebaseConfig);
 
-// Export database and auth helpers
-const db = firebase.database();
-
-window.firebaseConfig = firebaseConfig;
-window.db = db;
+// Provide the helper function that app.js is looking for
+window.getDatabase = function() {
+    return firebase.database();
+};
