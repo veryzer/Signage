@@ -183,6 +183,27 @@ function initReceiverApp() {
     }
   });
 
+  // 5b. Listen for sender-initiated sessions (welcome slide from pairing code)
+  if (activePairingCode) {
+    const sessionRef = db.ref(`sessions/${activePairingCode}`);
+    sessionRef.on("value", (snapshot) => {
+      const session = snapshot.val();
+      if (!session || !session.playlist) return;
+
+      const playlist = session.playlist;
+      const slides = Array.isArray(playlist.slides) ? playlist.slides : Object.values(playlist.slides || {});
+
+      if (slides.length > 0) {
+        // Show the welcome slide even while unpaired
+        if (pairingScreenEl && !pairingScreenEl.classList.contains("hidden")) {
+          pairingScreenEl.classList.add("hidden");
+        }
+        if (stageEl) stageEl.classList.remove("hidden");
+        runSlideshow(slides);
+      }
+    });
+  }
+
   // 6. Listen to active playlist changes
   function listenToPlaylist(playlistId) {
     if (currentPlaylistRef) {

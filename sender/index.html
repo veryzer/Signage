@@ -2,35 +2,47 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>TLVP Signage Sender Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TLVP Signage Sender</title>
     <!-- Firebase App (Compat) -->
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
     <!-- Google Cast SDK -->
-    <script src="https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1"></script>
+    <script src="https://www.gstatic.com/cast/sdk/libs/sender/v1/cast_sender.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 40px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        h1 { color: #333; }
+        .section { background: #fff; padding: 20px; margin-bottom: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        input[type="text"] { padding: 10px; width: 200px; margin-right: 10px; }
+        button { padding: 10px 20px; cursor: pointer; background: #4f46e5; color: #fff; border: none; border-radius: 4px; }
+        button:hover { background: #4338ca; }
+        #message { margin-top: 15px; padding: 10px; border-radius: 4px; }
+        .success { background: #d1fae5; color: #065f46; }
+        .error { background: #fee2e2; color: #991b1b; }
+    </style>
 </head>
 <body>
     <h1>TLVP Signage Controller</h1>
-    
-    <div>
+
+    <div class="section">
         <h3>1. Cast to Screen</h3>
         <google-cast-launcher></google-cast-launcher>
     </div>
 
-    <div>
+    <div class="section">
         <h3>2. Screen Pairing</h3>
-        <input type="text" id="pairingCode" placeholder="Enter Screen Code">
+        <input type="text" id="pairingCode" placeholder="Enter Screen Code" maxlength="4">
         <button id="pairBtn">Connect Screen</button>
+        <div id="message"></div>
     </div>
 
-    <div>
-        <h3>3. Playlist Management</h3>
-        <textarea id="playlistInput" rows="5" cols="40" placeholder='["image1.jpg", "image2.jpg"]'></textarea>
-        <br>
-        <button id="updatePlaylistBtn">Update Playlist on Screen</button>
-    </div>
-
-    <!-- Load your shared Firebase config -->
+    <!-- Load shared Firebase config -->
     <script src="../assets/js/firebase-config.js"></script>
     <script>
         // Initialize Cast Context
@@ -43,27 +55,51 @@
             }
         };
 
-        // Handle Playlist Updates via Firebase
-        document.getElementById('updatePlaylistBtn').addEventListener('click', () => {
-            const code = document.getElementById('pairingCode').value.trim();
-            const rawData = document.getElementById('playlistInput').value;
-            
-            if (!code) {
-                alert('Please enter a pairing code first.');
+        const db = window.getDatabase();
+        const pairBtn = document.getElementById('pairBtn');
+        const codeInput = document.getElementById('pairingCode');
+        const messageDiv = document.getElementById('message');
+
+        function showMessage(text, isError) {
+            messageDiv.textContent = text;
+            messageDiv.className = isError ? 'message error' : 'message success';
+        }
+
+        pairBtn.addEventListener('click', () => {
+            const code = codeInput.value.trim().toUpperCase();
+            if (!code || code.length !== 4) {
+                showMessage('Please enter a valid 4-character pairing code.', true);
                 return;
             }
 
-            try {
-                const playlistItems = JSON.parse(rawData);
-                db.ref('sessions/' + code + '/playlist').set({
-                    items: playlistItems,
-                    updatedAt: Date.now()
-                }).then(() => {
-                    alert('Playlist successfully updated on screen!');
-                });
-            } catch (e) {
-                alert('Invalid JSON format for playlist items.');
-            }
+            const codeRef = db.ref('unpaired_devices/' + code);
+            codeRef.once('value', (snapshot) => {
+                if (snapshot.exists()) {
+                    const device = snapshot.val();
+                    // Push welcome slide to the device
+                    const sessionRef = db.ref('sessions/' + code);
+                    sessionRef.set({
+                        playlist: {
+                            slides: [
+                                {
+                                    type: 'html',
+                                    content: '<div style="display:flex;flex-direction:column;justify-content:center;align-items:center;height:100vh;background:#0f172a;color:#7dd3fc;font-family:Arial,sans-serif;"><div style="font-size:96px;font-weight:bold;letter-spacing:2px;">Welcome to TLVP Signage</div><div style="font-size:48px;color:#ffffff;margin-top:20px;">TLVP.com</div></div>',
+                                    durationSec: 10
+                                }
+                            ],
+                            updatedAt: Date.now()
+                        }
+                    }).then(() => {
+                        showMessage('Screen connected! Welcome slide sent.', false);
+                        // Clean up unpaired entry
+                        codeRef.remove();
+                    }).catch((err) => {
+                        showMessage('Error: ' + err.message, true);
+                    });
+                } else {
+                    showMessage('Invalid pairing code. Please check the code on your screen.', true);
+                }
+            });
         });
     </script>
 </body>
